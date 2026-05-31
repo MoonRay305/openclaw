@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFreePortBlockWithPermissionFallback } from "../test-utils/ports.js";
+import { buildMcpToolSchema } from "./mcp-http.schema.js";
 
 type MockGatewayTool = {
   name: string;
@@ -269,6 +270,72 @@ describe("mcp loopback server", () => {
     });
   });
 
+  it("omits malformed loopback tool metadata while preserving healthy schemas", () => {
+    const unreadableName = {
+      name: "fuzzplugin_unreadable",
+      description: "unreadable name",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({
+        content: [{ type: "text", text: "unreachable" }],
+      }),
+    } satisfies MockGatewayTool;
+    Object.defineProperty(unreadableName, "name", {
+      enumerable: true,
+      get() {
+        throw new Error("fuzzplugin loopback tool name getter exploded");
+      },
+    });
+    const unreadableParameters = {
+      name: "mockplugin_unreadable_parameters",
+      description: "unreadable parameters",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({
+        content: [{ type: "text", text: "unreachable" }],
+      }),
+    } satisfies MockGatewayTool;
+    Object.defineProperty(unreadableParameters, "parameters", {
+      enumerable: true,
+      get() {
+        throw new Error("mockplugin loopback parameters getter exploded");
+      },
+    });
+    const malformedUnion = {
+      name: "fuzzplugin_move_delta",
+      description: "malformed union",
+      parameters: {
+        anyOf: [
+          { type: "object", properties: { angle: null }, required: ["angle"] },
+          {
+            type: "object",
+            properties: { angle: { type: "number" } },
+            required: ["angle"],
+          },
+        ],
+      },
+      execute: async () => ({
+        content: [{ type: "text", text: "ok" }],
+      }),
+    } satisfies MockGatewayTool;
+
+    expect(
+      buildMcpToolSchema([
+        unreadableName,
+        unreadableParameters,
+        malformedUnion,
+      ] as unknown as Parameters<typeof buildMcpToolSchema>[0]),
+    ).toEqual([
+      {
+        name: "fuzzplugin_move_delta",
+        description: "malformed union",
+        inputSchema: {
+          type: "object",
+          properties: { angle: { type: "number" } },
+          required: ["angle"],
+        },
+      },
+    ]);
+  });
+
   it("derives sender owner identity from the loopback bearer token", async () => {
     server = await startMcpLoopbackServer(0);
     const runtime = getActiveMcpLoopbackRuntime();
@@ -462,6 +529,134 @@ describe("mcp loopback server", () => {
     expect(cronExecute).toHaveBeenCalledTimes(1);
     expect(payload.result?.isError).not.toBe(true);
     expect(payload.result?.content?.[0]?.text).toBe("CRON_EXECUTED");
+  });
+
+  it("calls healthy tools when an earlier loopback tool name is unreadable", async () => {
+    const messageExecute = vi.fn<MockGatewayTool["execute"]>(async () => ({
+      content: [{ type: "text", text: "MESSAGE_EXECUTED" }],
+    }));
+    const unreadableName = {
+      name: "fuzzplugin_unreadable_call",
+      description: "unreadable name",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({
+        content: [{ type: "text", text: "unreachable" }],
+      }),
+    } satisfies MockGatewayTool;
+    Object.defineProperty(unreadableName, "name", {
+      enumerable: true,
+      get() {
+        throw new Error("fuzzplugin loopback call name getter exploded");
+      },
+    });
+    resolveGatewayScopedToolsMock.mockReturnValue({
+      agentId: "main",
+      tools: [
+        unreadableName,
+        {
+          name: "message",
+          description: "send a message",
+          parameters: { type: "object", properties: {} },
+          execute: messageExecute,
+        },
+      ],
+    });
+    server = await startMcpLoopbackServer(0);
+    const runtime = getActiveMcpLoopbackRuntime();
+
+    const response = await sendRaw({
+      port: server.port,
+      token: runtime?.ownerToken,
+      headers: {
+        "content-type": "application/json",
+        "x-session-key": "agent:main:main",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "message", arguments: {} },
+      }),
+    });
+    const payload = (await response.json()) as {
+      result?: { content?: Array<{ text?: string }>; isError?: boolean };
+    };
+
+    expect(response.status).toBe(200);
+    expect(messageExecute).toHaveBeenCalledTimes(1);
+    expect(payload.result?.isError).not.toBe(true);
+    expect(payload.result?.content?.[0]?.text).toBe("MESSAGE_EXECUTED");
+  });
+
+  it("does not execute tools omitted from the loopback schema", async () => {
+    const hiddenExecute = vi.fn<MockGatewayTool["execute"]>(async () => ({
+      content: [{ type: "text", text: "hidden" }],
+    }));
+    const hiddenTool = {
+      name: "fuzzplugin_hidden",
+      description: "hidden by malformed schema",
+      parameters: { type: "object", properties: {} },
+      execute: hiddenExecute,
+    } satisfies MockGatewayTool;
+    Object.defineProperty(hiddenTool, "parameters", {
+      enumerable: true,
+      get() {
+        throw new Error("fuzzplugin loopback parameters getter exploded");
+      },
+    });
+    resolveGatewayScopedToolsMock.mockReturnValue({
+      agentId: "main",
+      tools: [
+        hiddenTool,
+        {
+          name: "mockplugin_visible",
+          description: "visible",
+          parameters: { type: "object", properties: {} },
+          execute: async () => ({
+            content: [{ type: "text", text: "visible" }],
+          }),
+        },
+      ],
+    });
+    server = await startMcpLoopbackServer(0);
+    const runtime = getActiveMcpLoopbackRuntime();
+
+    const listResponse = await sendRaw({
+      port: server.port,
+      token: runtime?.ownerToken,
+      headers: {
+        "content-type": "application/json",
+        "x-session-key": "agent:main:main",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    const listed = (await listResponse.json()) as {
+      result?: { tools?: Array<{ name: string }> };
+    };
+    expect((listed.result?.tools ?? []).map((tool) => tool.name)).toEqual(["mockplugin_visible"]);
+
+    const callResponse = await sendRaw({
+      port: server.port,
+      token: runtime?.ownerToken,
+      headers: {
+        "content-type": "application/json",
+        "x-session-key": "agent:main:main",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "fuzzplugin_hidden", arguments: {} },
+      }),
+    });
+    const payload = (await callResponse.json()) as {
+      result?: { content?: Array<{ text?: string }>; isError?: boolean };
+    };
+
+    expect(callResponse.status).toBe(200);
+    expect(hiddenExecute).not.toHaveBeenCalled();
+    expect(payload.result?.isError).toBe(true);
+    expect(payload.result?.content?.[0]?.text).toBe("Tool not available: fuzzplugin_hidden");
   });
 
   it("honors before-tool-call hook blocks before loopback tool execution", async () => {
