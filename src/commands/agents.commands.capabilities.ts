@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolvePrimaryStringValue } from "@openclaw/normalization-core/string-coerce";
-import { resolveAgentDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import {
+  resolveAgentDir,
+  resolveDefaultAgentId,
+  resolveSubagentModelConfigSelection,
+} from "../agents/agent-scope.js";
 import { resolveAuthProfileOrder } from "../agents/auth-profiles/order.js";
 import { ensureAuthProfileStoreWithoutExternalProfiles } from "../agents/auth-profiles/store.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
@@ -217,8 +221,15 @@ function gatherProfileInputs(
     const alsoAllow = tools?.alsoAllow ?? [];
     const deny = tools?.deny ?? [];
     const toolsConfigured = Boolean(tools?.profile) || allow.length > 0 || alsoAllow.length > 0;
-    const delegationConfigured = Boolean(entry.subagents);
-    const delegationModel = resolvePrimaryStringValue(entry.subagents?.model);
+    // Delegation can be configured on the agent entry OR inherited from
+    // agents.defaults.subagents; treat either as "configured". Resolve the
+    // effective subagent model through the same precedence the runtime uses
+    // (agent subagents.model > agent model > defaults.subagents.model).
+    const delegationConfigured =
+      Boolean(entry.subagents) || Boolean(cfg.agents?.defaults?.subagents);
+    const delegationModel = delegationConfigured
+      ? resolvePrimaryStringValue(resolveSubagentModelConfigSelection({ cfg, agentId }))
+      : undefined;
     const delegationProvider = deriveProvider(delegationModel);
     return {
       agentId,

@@ -166,6 +166,29 @@ describe("agentsCapabilitiesCommand", () => {
     expect(creds.detail).not.toContain(SECRET);
   });
 
+  it("treats delegation inherited from agents.defaults.subagents as configured", async () => {
+    mocks.requireValidConfigMock.mockResolvedValue(
+      configWith({
+        defaults: { subagents: { model: "anthropic/claude-haiku-4-5" } },
+        list: [{ id: "peewee", model: "anthropic/claude-opus-4-7", tools: { allow: ["Read"] } }],
+      } as unknown as OpenClawConfig["agents"]),
+    );
+    const { runtime, logs } = createRuntime();
+    const env = { ANTHROPIC_API_KEY: SECRET } as unknown as NodeJS.ProcessEnv;
+
+    await agentsCapabilitiesCommand({ json: true }, runtime, env);
+
+    const contract = JSON.parse(logs[0]);
+    const checks: Array<{ id: string; reason: string; status: string }> =
+      contract.profiles[0].checks;
+    // The profile has no `subagents` block of its own, but inherits one from
+    // defaults: delegation must be reported as configured, not "not configured".
+    expect(checks.some((c) => c.reason === "delegation_not_configured")).toBe(false);
+    const delegationCreds = checks.find((c) => c.id === "profile.delegation.credentials");
+    expect(delegationCreds?.status).toBe("green");
+    expect(logs[0]).not.toContain(SECRET);
+  });
+
   it("filters to a single agent via --agent", async () => {
     mocks.requireValidConfigMock.mockResolvedValue(
       configWith({
