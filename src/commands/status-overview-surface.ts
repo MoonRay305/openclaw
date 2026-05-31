@@ -66,6 +66,7 @@ export type StatusOverviewSurface = {
   nodeOnlyGateway?: NodeOnlyGatewayInfo | null;
 };
 
+/** Adapts the full status scan shape into the smaller overview rendering contract. */
 export function buildStatusOverviewSurfaceFromScan(params: {
   scan: Pick<
     StatusScanResult,
@@ -107,6 +108,7 @@ export function buildStatusOverviewSurfaceFromScan(params: {
   };
 }
 
+/** Adapts the fast overview scan shape to the same renderer input as full status. */
 export function buildStatusOverviewSurfaceFromOverview(params: {
   overview: Pick<
     StatusScanOverviewResult,
@@ -136,6 +138,7 @@ export function buildStatusOverviewSurfaceFromOverview(params: {
   };
 }
 
+/** Lets status variants inject extra rows without duplicating gateway/update formatting. */
 export function buildStatusOverviewRowsFromSurface(params: {
   surface: StatusOverviewSurface;
   prefixRows?: StatusOverviewRow[];
@@ -189,6 +192,7 @@ export function buildStatusOverviewRowsFromSurface(params: {
   });
 }
 
+/** Builds the gateway JSON payload from the same surface used by human-readable status. */
 export function buildStatusGatewayJsonPayloadFromSurface(params: {
   surface: Pick<
     StatusOverviewSurface,

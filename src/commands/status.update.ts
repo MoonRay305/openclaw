@@ -32,6 +32,7 @@ export async function getUpdateCheckResult(params: {
   });
 }
 
+/** Normalized update signal consumed by both status summaries and actionable hints. */
 export type UpdateAvailability = {
   available: boolean;
   hasGitUpdate: boolean;
@@ -40,6 +41,7 @@ export type UpdateAvailability = {
   gitBehind: number | null;
 };
 
+/** Reduces git and registry probes to the small decision shape the UI needs. */
 export function resolveUpdateAvailability(update: UpdateCheckResult): UpdateAvailability {
   const latestVersion = update.registry?.latestVersion ?? null;
   const registryCmp = latestVersion ? compareSemverStrings(VERSION, latestVersion) : null;
@@ -59,6 +61,7 @@ export function resolveUpdateAvailability(update: UpdateCheckResult): UpdateAvai
   };
 }
 
+/** Builds the actionable update hint only when the probes show a newer install target. */
 export function formatUpdateAvailableHint(update: UpdateCheckResult): string | null {
   const availability = resolveUpdateAvailability(update);
   if (!availability.available) {
@@ -76,6 +79,7 @@ export function formatUpdateAvailableHint(update: UpdateCheckResult): string | n
   return `Update available${suffix}. Run: ${formatCliCommand("openclaw update")}`;
 }
 
+/** Formats the compact status row while preserving git/package-manager install context. */
 export function formatUpdateOneLiner(update: UpdateCheckResult): string {
   const parts: string[] = [];
 
