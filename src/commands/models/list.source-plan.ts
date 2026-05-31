@@ -10,6 +10,7 @@ export type ModelListSourcePlanKind =
   | "provider-runtime-static"
   | "provider-runtime-scoped";
 
+/** Source-selection result that tells model list which catalogs/runtime paths to query. */
 export type ModelListSourcePlan = {
   kind: ModelListSourcePlanKind;
   manifestCatalogRows: readonly NormalizedModelCatalogRow[];
@@ -50,6 +51,7 @@ export function createRegistryModelListSourcePlan(): ModelListSourcePlan {
   });
 }
 
+/** Chooses the cheapest model-list sources for the current flags and provider filter. */
 export async function planAllModelListSources(params: {
   all?: boolean;
   enableCascade?: boolean;
