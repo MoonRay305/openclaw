@@ -121,8 +121,11 @@ Options:
 ### `agents capabilities` (alias `caps`)
 
 Read-only per-profile capability check for the fleet. It never mutates config,
-never opens network connections, and never prints secret values — credential
-checks report presence only (env var name/presence), never the value.
+never opens network connections, and never prints secret values. Credential
+checks report presence only: a provider counts as credentialed when an auth env
+var is set, the agent's auth profile store holds a usable profile (OAuth / static
+token / api_key), or a config-backed custom-provider api key resolves. Only
+presence is reported — never the credential value.
 
 Options:
 
@@ -146,8 +149,11 @@ checks cover: gateway configured, OpenClaw state DB (Kanban/cron storage), cron
 store visibility, GitHub CLI/auth, Linear auth, and the delivery bridge (rclone).
 
 Missing optional integrations degrade to `yellow`; a profile only goes `red` when
-a capability it actually requires is broken. The command always exits `0` — the
-status is data, not a process failure.
+a capability it actually requires is broken. Capability status is data, not a
+process result: `red`/`yellow` findings do not by themselves make the command
+exit non-zero. The command still exits non-zero on CLI/config errors — for
+example, combining `--json` with `--markdown`, or when the OpenClaw config exists
+but fails validation.
 
 JSON shape (abridged):
 

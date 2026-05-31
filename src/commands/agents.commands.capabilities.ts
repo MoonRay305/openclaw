@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolvePrimaryStringValue } from "@openclaw/normalization-core/string-coerce";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveAgentDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveAuthProfileOrder } from "../agents/auth-profiles/order.js";
+import { ensureAuthProfileStoreWithoutExternalProfiles } from "../agents/auth-profiles/store.js";
+import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import {
   buildFleetCapabilityContract,
   type CapabilityCheck,
@@ -11,6 +14,7 @@ import {
   type ProfileCapabilityInput,
 } from "../agents/fleet-capability-contract.js";
 import { renderFleetCapabilityMarkdown } from "../agents/fleet-capability-contract.markdown.js";
+import { resolveUsableCustomProviderApiKey } from "../agents/model-auth.js";
 import { resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveCronStorePath } from "../cron/store.js";
@@ -58,7 +62,23 @@ function envVarPresent(name: string, env: NodeJS.ProcessEnv): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function makeProviderCredentialProbe(env: NodeJS.ProcessEnv): (provider?: string) => boolean {
+/**
+ * Read-only credential presence probe.
+ *
+ * Mirrors the auth-source model used by `openclaw models list` status:
+ * a provider counts as credentialed when ANY of these are present —
+ *   1. a provider auth env var,
+ *   2. a usable entry in the agent's auth profile store (OAuth / static
+ *      token / api_key profiles, incl. configured aws-sdk profiles),
+ *   3. a config-backed custom-provider api key.
+ * Returns a boolean only; it never reads, returns, logs, or renders the
+ * underlying secret value.
+ */
+function makeProviderCredentialProbe(
+  cfg: OpenClawConfig,
+  env: NodeJS.ProcessEnv,
+  store: AuthProfileStore | undefined,
+): (provider?: string) => boolean {
   const candidates = resolveProviderAuthEnvVarCandidates();
   return (provider?: string): boolean => {
     if (!provider) {
@@ -66,8 +86,41 @@ function makeProviderCredentialProbe(env: NodeJS.ProcessEnv): (provider?: string
     }
     const canonical = resolveProviderIdForAuth(provider);
     const names = candidates[canonical] ?? candidates[provider] ?? [];
-    return names.some((name) => envVarPresent(name, env));
+    if (names.some((name) => envVarPresent(name, env))) {
+      return true;
+    }
+    if (store) {
+      try {
+        if (resolveAuthProfileOrder({ cfg, store, provider }).length > 0) {
+          return true;
+        }
+      } catch {
+        // best-effort: a malformed store must not crash the read-only report
+      }
+    }
+    try {
+      if (resolveUsableCustomProviderApiKey({ cfg, provider, env })) {
+        return true;
+      }
+    } catch {
+      // best-effort: config-backed auth resolution is advisory here
+    }
+    return false;
   };
+}
+
+/** Load an agent's auth profile store read-only; never mutates or syncs external CLIs. */
+function loadAuthStoreForAgent(
+  cfg: OpenClawConfig,
+  agentId: string,
+  env: NodeJS.ProcessEnv,
+): AuthProfileStore | undefined {
+  try {
+    const agentDir = resolveAgentDir(cfg, agentId, env);
+    return ensureAuthProfileStoreWithoutExternalProfiles(agentDir, { readOnly: true });
+  } catch {
+    return undefined;
+  }
 }
 
 /** Best-effort PATH scan for an executable. Read-only; never executes it. */
@@ -145,43 +198,44 @@ function gatherProfileInputs(
   filterAgentId?: string,
 ): ProfileCapabilityInput[] {
   const defaultAgentId = normalizeAgentId(resolveDefaultAgentId(cfg));
-  const credsPresent = makeProviderCredentialProbe(env);
   const defaultModel = resolvePrimaryStringValue(cfg.agents?.defaults?.model);
   const entries = listAgentEntries(cfg);
   const wanted = filterAgentId ? normalizeAgentId(filterAgentId) : undefined;
 
-  const source = entries.length > 0 ? entries : [{ id: defaultAgentId }];
+  const source = (entries.length > 0 ? entries : [{ id: defaultAgentId }]).filter((entry) =>
+    wanted ? normalizeAgentId(entry.id) === wanted : true,
+  );
 
-  return source
-    .map((entry): ProfileCapabilityInput => {
-      const agentId = normalizeAgentId(entry.id);
-      const model = resolvePrimaryStringValue(entry.model) ?? defaultModel;
-      const provider = deriveProvider(model);
-      const tools = entry.tools;
-      const allow = tools?.allow ?? [];
-      const alsoAllow = tools?.alsoAllow ?? [];
-      const deny = tools?.deny ?? [];
-      const toolsConfigured = Boolean(tools?.profile) || allow.length > 0 || alsoAllow.length > 0;
-      const delegationConfigured = Boolean(entry.subagents);
-      const delegationModel = resolvePrimaryStringValue(entry.subagents?.model);
-      const delegationProvider = deriveProvider(delegationModel);
-      return {
-        agentId,
-        name: entry.name?.trim() || undefined,
-        isDefault: agentId === defaultAgentId,
-        configPresent: entries.length > 0,
-        model,
-        provider,
-        providerCredentialsPresent: credsPresent(provider),
-        delegationConfigured,
-        delegationModel,
-        delegationProvider,
-        delegationCredentialsPresent: credsPresent(delegationProvider),
-        toolsConfigured,
-        toolKeys: [...allow, ...alsoAllow, ...deny],
-      };
-    })
-    .filter((profile) => (wanted ? profile.agentId === wanted : true));
+  return source.map((entry): ProfileCapabilityInput => {
+    const agentId = normalizeAgentId(entry.id);
+    const store = loadAuthStoreForAgent(cfg, agentId, env);
+    const credsPresent = makeProviderCredentialProbe(cfg, env, store);
+    const model = resolvePrimaryStringValue(entry.model) ?? defaultModel;
+    const provider = deriveProvider(model);
+    const tools = entry.tools;
+    const allow = tools?.allow ?? [];
+    const alsoAllow = tools?.alsoAllow ?? [];
+    const deny = tools?.deny ?? [];
+    const toolsConfigured = Boolean(tools?.profile) || allow.length > 0 || alsoAllow.length > 0;
+    const delegationConfigured = Boolean(entry.subagents);
+    const delegationModel = resolvePrimaryStringValue(entry.subagents?.model);
+    const delegationProvider = deriveProvider(delegationModel);
+    return {
+      agentId,
+      name: entry.name?.trim() || undefined,
+      isDefault: agentId === defaultAgentId,
+      configPresent: entries.length > 0,
+      model,
+      provider,
+      providerCredentialsPresent: credsPresent(provider),
+      delegationConfigured,
+      delegationModel,
+      delegationProvider,
+      delegationCredentialsPresent: credsPresent(delegationProvider),
+      toolsConfigured,
+      toolKeys: [...allow, ...alsoAllow, ...deny],
+    };
+  });
 }
 
 function renderCheckLine(check: CapabilityCheck): string {
@@ -228,6 +282,7 @@ export async function agentsCapabilitiesCommand(
 ): Promise<void> {
   if (opts.json && opts.markdown) {
     runtime.error("Cannot combine --json and --markdown; choose one output format.");
+    runtime.exit(1);
     return;
   }
 

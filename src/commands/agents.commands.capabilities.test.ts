@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { agentsCapabilitiesCommand } from "./agents.commands.capabilities.js";
@@ -6,6 +7,9 @@ import { agentsCapabilitiesCommand } from "./agents.commands.capabilities.js";
 const mocks = vi.hoisted(() => ({
   requireValidConfigMock: vi.fn(),
   resolveProviderAuthEnvVarCandidatesMock: vi.fn(),
+  ensureAuthProfileStoreMock: vi.fn(),
+  resolveAuthProfileOrderMock: vi.fn(),
+  resolveUsableCustomProviderApiKeyMock: vi.fn(),
 }));
 
 vi.mock("./agents.command-shared.js", () => ({
@@ -16,9 +20,26 @@ vi.mock("../secrets/provider-env-vars.js", () => ({
   resolveProviderAuthEnvVarCandidates: mocks.resolveProviderAuthEnvVarCandidatesMock,
 }));
 
+vi.mock("../agents/auth-profiles/store.js", () => ({
+  ensureAuthProfileStoreWithoutExternalProfiles: mocks.ensureAuthProfileStoreMock,
+}));
+
+vi.mock("../agents/auth-profiles/order.js", () => ({
+  resolveAuthProfileOrder: mocks.resolveAuthProfileOrderMock,
+}));
+
+vi.mock("../agents/model-auth.js", () => ({
+  resolveUsableCustomProviderApiKey: mocks.resolveUsableCustomProviderApiKeyMock,
+}));
+
+function emptyStore(): AuthProfileStore {
+  return { profiles: {}, order: {} } as unknown as AuthProfileStore;
+}
+
 function createRuntime() {
   const logs: string[] = [];
   const errors: string[] = [];
+  const exits: number[] = [];
   const runtime: RuntimeEnv = {
     log: (...args: unknown[]) => {
       logs.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
@@ -26,9 +47,11 @@ function createRuntime() {
     error: (...args: unknown[]) => {
       errors.push(args.map((a) => String(a)).join(" "));
     },
-    exit: () => {},
+    exit: (code: number) => {
+      exits.push(code);
+    },
   };
-  return { runtime, logs, errors };
+  return { runtime, logs, errors, exits };
 }
 
 const SECRET = "sk-ant-super-secret-value-9999";
@@ -43,9 +66,13 @@ describe("agentsCapabilitiesCommand", () => {
     mocks.resolveProviderAuthEnvVarCandidatesMock.mockReturnValue({
       anthropic: ["ANTHROPIC_API_KEY"],
     });
+    // Defaults: no auth profiles, no config-backed custom api key.
+    mocks.ensureAuthProfileStoreMock.mockReturnValue(emptyStore());
+    mocks.resolveAuthProfileOrderMock.mockReturnValue([]);
+    mocks.resolveUsableCustomProviderApiKeyMock.mockReturnValue(null);
   });
 
-  it("emits a JSON contract without leaking secret values", async () => {
+  it("emits a JSON contract without leaking secret values (env credential)", async () => {
     mocks.requireValidConfigMock.mockResolvedValue(
       configWith({
         list: [{ id: "peewee", model: "anthropic/claude-opus-4-7", tools: { allow: ["Read"] } }],
@@ -67,6 +94,33 @@ describe("agentsCapabilitiesCommand", () => {
     expect(logs[0]).not.toContain(SECRET);
   });
 
+  it("treats a usable auth profile as present credentials (no env var)", async () => {
+    mocks.requireValidConfigMock.mockResolvedValue(
+      configWith({
+        list: [{ id: "peewee", model: "anthropic/claude-opus-4-7", tools: { allow: ["Read"] } }],
+      }),
+    );
+    // Store has an OAuth profile whose credential happens to be secret-shaped.
+    mocks.ensureAuthProfileStoreMock.mockReturnValue({
+      profiles: { "anthropic-oauth": { provider: "anthropic", type: "oauth", access: SECRET } },
+      order: {},
+    } as unknown as AuthProfileStore);
+    mocks.resolveAuthProfileOrderMock.mockReturnValue(["anthropic-oauth"]);
+
+    const { runtime, logs } = createRuntime();
+    // Deliberately empty env: only the auth profile store should satisfy the check.
+    await agentsCapabilitiesCommand({ json: true }, runtime, {} as NodeJS.ProcessEnv);
+
+    const contract = JSON.parse(logs[0]);
+    const creds = contract.profiles[0].checks.find(
+      (c: { id: string }) => c.id === "profile.credentials",
+    );
+    expect(creds.status).toBe("green");
+    expect(creds.reason).toBe("ok");
+    // A store-backed secret value must never surface in the rendered contract.
+    expect(logs[0]).not.toContain(SECRET);
+  });
+
   it("flags missing provider credentials as red", async () => {
     mocks.requireValidConfigMock.mockResolvedValue(
       configWith({
@@ -82,6 +136,34 @@ describe("agentsCapabilitiesCommand", () => {
     const creds = profile.checks.find((c: { id: string }) => c.id === "profile.credentials");
     expect(creds.status).toBe("red");
     expect(creds.reason).toBe("provider_credentials_missing");
+  });
+
+  it("never renders secret-shaped env values in any output format or remediation", async () => {
+    mocks.requireValidConfigMock.mockResolvedValue(
+      configWith({
+        list: [{ id: "peewee", model: "anthropic/claude-opus-4-7", tools: { allow: ["Read"] } }],
+      }),
+    );
+    // Secret lives in an unrelated env var; the provider stays uncredentialed (red),
+    // so the remediation hint is rendered — and must not echo the secret.
+    const env = { UNRELATED_TOKEN: SECRET } as unknown as NodeJS.ProcessEnv;
+
+    for (const opts of [{ json: true }, { markdown: true }, {}]) {
+      const { runtime, logs } = createRuntime();
+      await agentsCapabilitiesCommand(opts, runtime, env);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).not.toContain(SECRET);
+    }
+
+    // Assert specifically against the remediation detail string.
+    const { runtime, logs } = createRuntime();
+    await agentsCapabilitiesCommand({ json: true }, runtime, env);
+    const contract = JSON.parse(logs[0]);
+    const creds = contract.profiles[0].checks.find(
+      (c: { id: string }) => c.id === "profile.credentials",
+    );
+    expect(creds.status).toBe("red");
+    expect(creds.detail).not.toContain(SECRET);
   });
 
   it("filters to a single agent via --agent", async () => {
@@ -126,14 +208,15 @@ describe("agentsCapabilitiesCommand", () => {
     expect(logs[0]).toContain("Profiles:");
   });
 
-  it("rejects combining --json and --markdown", async () => {
-    const { runtime, errors } = createRuntime();
+  it("rejects combining --json and --markdown with a non-zero exit", async () => {
+    const { runtime, errors, exits } = createRuntime();
     await agentsCapabilitiesCommand(
       { json: true, markdown: true },
       runtime,
       {} as NodeJS.ProcessEnv,
     );
     expect(errors[0]).toContain("Cannot combine --json and --markdown");
+    expect(exits).toContain(1);
     expect(mocks.requireValidConfigMock).not.toHaveBeenCalled();
   });
 
