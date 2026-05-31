@@ -40,12 +40,14 @@ export type MemoryStatusSnapshot = MemoryProviderStatus & {
   agentId: string;
 };
 
+/** Memory plugin slot decision used before status probes load heavier memory code. */
 export type MemoryPluginStatus = {
   enabled: boolean;
   slot: string | null;
   reason?: string;
 };
 
+/** Gateway reachability/auth snapshot shared by status overview and detailed scans. */
 export type GatewayProbeSnapshot = {
   gatewayConnection: ReturnType<typeof buildGatewayConnectionDetailsWithResolvers>;
   remoteUrlMissing: boolean;
@@ -112,6 +114,8 @@ function shouldTryLocalStatusRpcFallback(params: {
   return error.includes("timeout") || params.gatewayProbe.auth?.capability === "unknown";
 }
 
+// Loopback HTTP probes can time out before auth capability is known; a local status RPC
+// reuses the same auth material and only upgrades the probe when the gateway responds.
 async function applyLocalStatusRpcFallback(params: {
   cfg: OpenClawConfig;
   gatewayMode: "local" | "remote";
@@ -177,6 +181,7 @@ function hasExplicitMemorySearchConfig(cfg: OpenClawConfig, agentId: string): bo
   return agents.some((agent) => agent?.id === agentId && Object.hasOwn(agent, "memorySearch"));
 }
 
+/** Resolves whether memory status should use the configured plugin slot or stay disabled. */
 export function resolveMemoryPluginStatus(cfg: OpenClawConfig): MemoryPluginStatus {
   const pluginsEnabled = cfg.plugins?.enabled !== false;
   if (!pluginsEnabled) {
@@ -189,6 +194,7 @@ export function resolveMemoryPluginStatus(cfg: OpenClawConfig): MemoryPluginStat
   return { enabled: true, slot: raw || defaultSlotIdForKey("memory") };
 }
 
+/** Probes gateway reachability and auth while preserving cold imports for status startup. */
 export async function resolveGatewayProbeSnapshot(params: {
   cfg: OpenClawConfig;
   opts: {
@@ -280,6 +286,7 @@ export async function resolveGatewayProbeSnapshot(params: {
   };
 }
 
+/** Builds the public HTTPS Control UI URL when Tailscale DNS is configured. */
 export function buildTailscaleHttpsUrl(params: {
   tailscaleMode: string;
   tailscaleDns: string | null;
@@ -290,6 +297,7 @@ export function buildTailscaleHttpsUrl(params: {
     : null;
 }
 
+/** Resolves memory health only when config or an existing store makes probing meaningful. */
 export async function resolveSharedMemoryStatusSnapshot(params: {
   cfg: OpenClawConfig;
   agentStatus: { defaultId?: string | null };

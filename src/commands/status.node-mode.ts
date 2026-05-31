@@ -53,6 +53,7 @@ function isNodeServiceActive(node: NodeOnlyServiceLike): boolean {
   return typeof node.runtimeShort === "string" && node.runtimeShort.startsWith("running");
 }
 
+/** Reports remote gateway details when this machine intentionally runs only the node host. */
 export async function resolveNodeOnlyGatewayInfo(params: {
   daemon: Pick<NodeOnlyServiceLike, "installed">;
   node: NodeOnlyServiceLike;
