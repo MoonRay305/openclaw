@@ -1,11 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolvePrimaryStringValue } from "@openclaw/normalization-core/string-coerce";
-import {
-  resolveAgentDir,
-  resolveDefaultAgentId,
-  resolveSubagentModelConfigSelection,
-} from "../agents/agent-scope.js";
+import { resolveAgentDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveAuthProfileOrder } from "../agents/auth-profiles/order.js";
 import { ensureAuthProfileStoreWithoutExternalProfiles } from "../agents/auth-profiles/store.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
@@ -19,6 +15,7 @@ import {
 } from "../agents/fleet-capability-contract.js";
 import { renderFleetCapabilityMarkdown } from "../agents/fleet-capability-contract.markdown.js";
 import { resolveUsableCustomProviderApiKey } from "../agents/model-auth.js";
+import { resolveSubagentConfiguredModelSelection } from "../agents/model-selection.js";
 import { resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveCronStorePath } from "../cron/store.js";
@@ -221,15 +218,14 @@ function gatherProfileInputs(
     const alsoAllow = tools?.alsoAllow ?? [];
     const deny = tools?.deny ?? [];
     const toolsConfigured = Boolean(tools?.profile) || allow.length > 0 || alsoAllow.length > 0;
-    // Delegation can be configured on the agent entry OR inherited from
-    // agents.defaults.subagents; treat either as "configured". Resolve the
-    // effective subagent model through the same precedence the runtime uses
-    // (agent subagents.model > agent model > defaults.subagents.model).
-    const delegationConfigured =
-      Boolean(entry.subagents) || Boolean(cfg.agents?.defaults?.subagents);
-    const delegationModel = delegationConfigured
-      ? resolvePrimaryStringValue(resolveSubagentModelConfigSelection({ cfg, agentId }))
-      : undefined;
+    // Resolve the subagent model through the exact runtime selection path so
+    // the report matches what spawning would actually use: agent
+    // subagents.model > agents.defaults.subagents.model > agent primary model.
+    // Delegation counts as configured whenever that resolver yields a model
+    // (including the primary-model fallback), and credentials are then checked
+    // for the resolved delegation provider.
+    const delegationModel = resolveSubagentConfiguredModelSelection({ cfg, agentId });
+    const delegationConfigured = Boolean(delegationModel && delegationModel.trim());
     const delegationProvider = deriveProvider(delegationModel);
     return {
       agentId,

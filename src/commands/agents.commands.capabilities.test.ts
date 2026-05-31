@@ -166,7 +166,7 @@ describe("agentsCapabilitiesCommand", () => {
     expect(creds.detail).not.toContain(SECRET);
   });
 
-  it("treats delegation inherited from agents.defaults.subagents as configured", async () => {
+  it("treats agents.defaults.subagents.model as delegation configured", async () => {
     mocks.requireValidConfigMock.mockResolvedValue(
       configWith({
         defaults: { subagents: { model: "anthropic/claude-haiku-4-5" } },
@@ -181,12 +181,70 @@ describe("agentsCapabilitiesCommand", () => {
     const contract = JSON.parse(logs[0]);
     const checks: Array<{ id: string; reason: string; status: string }> =
       contract.profiles[0].checks;
-    // The profile has no `subagents` block of its own, but inherits one from
-    // defaults: delegation must be reported as configured, not "not configured".
+    // No per-agent `subagents` block, but delegation is inherited from defaults:
+    // it must be reported as configured, not "not configured".
     expect(checks.some((c) => c.reason === "delegation_not_configured")).toBe(false);
     const delegationCreds = checks.find((c) => c.id === "profile.delegation.credentials");
     expect(delegationCreds?.status).toBe("green");
     expect(logs[0]).not.toContain(SECRET);
+  });
+
+  it("treats the primary-model fallback as delegation configured", async () => {
+    // No subagents block anywhere: the runtime resolver falls back to the
+    // agent primary model, so a spawned subagent would still run — delegation
+    // must be reported as configured.
+    mocks.requireValidConfigMock.mockResolvedValue(
+      configWith({
+        list: [{ id: "peewee", model: "anthropic/claude-opus-4-7", tools: { allow: ["Read"] } }],
+      }),
+    );
+    const { runtime, logs } = createRuntime();
+    const env = { ANTHROPIC_API_KEY: SECRET } as unknown as NodeJS.ProcessEnv;
+
+    await agentsCapabilitiesCommand({ json: true }, runtime, env);
+
+    const contract = JSON.parse(logs[0]);
+    const checks: Array<{ id: string; reason: string; status: string }> =
+      contract.profiles[0].checks;
+    expect(checks.some((c) => c.reason === "delegation_not_configured")).toBe(false);
+    const delegationCreds = checks.find((c) => c.id === "profile.delegation.credentials");
+    expect(delegationCreds?.status).toBe("green");
+    expect(logs[0]).not.toContain(SECRET);
+  });
+
+  it("checks credentials for the resolved delegation provider, not the primary", async () => {
+    // Primary provider is anthropic (credentialed); delegation resolves to an
+    // openai subagent model that has NO credentials. The delegation check must
+    // reflect the openai provider, independent of the green primary check.
+    mocks.requireValidConfigMock.mockResolvedValue(
+      configWith({
+        defaults: { subagents: { model: "openai/gpt-4o-mini" } },
+        list: [{ id: "peewee", model: "anthropic/claude-opus-4-7", tools: { allow: ["Read"] } }],
+      } as unknown as OpenClawConfig["agents"]),
+    );
+    const env = { ANTHROPIC_API_KEY: SECRET } as unknown as NodeJS.ProcessEnv;
+
+    // Sanitized across every render path, including the remediation hint.
+    for (const opts of [{ json: true }, { markdown: true }, {}]) {
+      const { runtime, logs } = createRuntime();
+      await agentsCapabilitiesCommand(opts, runtime, env);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).not.toContain(SECRET);
+    }
+
+    const { runtime, logs } = createRuntime();
+    await agentsCapabilitiesCommand({ json: true }, runtime, env);
+    const contract = JSON.parse(logs[0]);
+    const checks: Array<{ id: string; reason: string; status: string; detail?: string }> =
+      contract.profiles[0].checks;
+    const primaryCreds = checks.find((c) => c.id === "profile.credentials");
+    expect(primaryCreds?.status).toBe("green");
+    const delegationCreds = checks.find((c) => c.id === "profile.delegation.credentials");
+    expect(delegationCreds?.status).toBe("yellow");
+    expect(delegationCreds?.reason).toBe("delegation_credentials_missing");
+    // Remediation names the resolved provider but never echoes a secret.
+    expect(delegationCreds?.detail).toContain("openai");
+    expect(delegationCreds?.detail ?? "").not.toContain(SECRET);
   });
 
   it("filters to a single agent via --agent", async () => {
