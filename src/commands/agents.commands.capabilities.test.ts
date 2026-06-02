@@ -247,6 +247,71 @@ describe("agentsCapabilitiesCommand", () => {
     expect(delegationCreds?.detail ?? "").not.toContain(SECRET);
   });
 
+  it("resolves a configured delegation alias to its real provider", async () => {
+    // agents.defaults.subagents.model is a config-defined alias ("gpt") that the
+    // runtime spawn resolver expands to a fully-qualified openai/* model. The
+    // command must mirror that expansion so credentials are checked against the
+    // provider that will actually run (openai) rather than the bare alias —
+    // which derives to no provider and would render "unknown".
+    mocks.resolveProviderAuthEnvVarCandidatesMock.mockReturnValue({
+      anthropic: ["ANTHROPIC_API_KEY"],
+      openai: ["OPENAI_API_KEY"],
+    });
+    mocks.requireValidConfigMock.mockResolvedValue(
+      configWith({
+        defaults: {
+          subagents: { model: "gpt" },
+          models: { "openai/gpt-4o-mini": { alias: "gpt" } },
+        },
+        list: [{ id: "peewee", model: "anthropic/claude-opus-4-7", tools: { allow: ["Read"] } }],
+      } as unknown as OpenClawConfig["agents"]),
+    );
+    // Only the openai credential is present; the alias must resolve to openai
+    // for the delegation check to come back green.
+    const env = { OPENAI_API_KEY: SECRET } as unknown as NodeJS.ProcessEnv;
+
+    const { runtime, logs } = createRuntime();
+    await agentsCapabilitiesCommand({ json: true }, runtime, env);
+
+    const contract = JSON.parse(logs[0]);
+    const checks: Array<{ id: string; reason: string; status: string; detail?: string }> =
+      contract.profiles[0].checks;
+    expect(checks.some((c) => c.reason === "delegation_not_configured")).toBe(false);
+    const delegationCreds = checks.find((c) => c.id === "profile.delegation.credentials");
+    expect(delegationCreds?.status).toBe("green");
+    expect(delegationCreds?.reason).toBe("ok");
+    // The alias resolved to a real provider, so no "unknown" provider surfaces.
+    expect(logs[0]).not.toContain("unknown");
+    expect(logs[0]).not.toContain(SECRET);
+  });
+
+  it("falls back to agents.defaults.model primary when no subagent/agent model is set", async () => {
+    // No subagents.model anywhere and no agent-local model: the runtime spawn
+    // path falls back to agents.defaults.model.primary, so a spawned subagent
+    // would still run. Delegation must NOT report not-configured, and
+    // credentials must be checked for the default-primary provider (anthropic).
+    mocks.requireValidConfigMock.mockResolvedValue(
+      configWith({
+        defaults: { model: { primary: "anthropic/claude-opus-4-7" } },
+        list: [{ id: "peewee", tools: { allow: ["Read"] } }],
+      } as unknown as OpenClawConfig["agents"]),
+    );
+    const env = { ANTHROPIC_API_KEY: SECRET } as unknown as NodeJS.ProcessEnv;
+
+    const { runtime, logs } = createRuntime();
+    await agentsCapabilitiesCommand({ json: true }, runtime, env);
+
+    const contract = JSON.parse(logs[0]);
+    const checks: Array<{ id: string; reason: string; status: string }> =
+      contract.profiles[0].checks;
+    expect(checks.some((c) => c.reason === "delegation_not_configured")).toBe(false);
+    const delegationCreds = checks.find((c) => c.id === "profile.delegation.credentials");
+    expect(delegationCreds?.status).toBe("green");
+    expect(delegationCreds?.reason).toBe("ok");
+    expect(logs[0]).not.toContain("unknown");
+    expect(logs[0]).not.toContain(SECRET);
+  });
+
   it("filters to a single agent via --agent", async () => {
     mocks.requireValidConfigMock.mockResolvedValue(
       configWith({
