@@ -40,9 +40,19 @@ describe("voice-field-router installed runtime package", () => {
 
   it("loads the copied compiled runtime through OpenClaw's external plugin loader", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "voice-field-router-loader-"));
+    const stateDir = path.join(home, ".openclaw");
+    const configPath = path.join(stateDir, "openclaw.json");
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       HOME: home,
+      USERPROFILE: home,
+      APPDATA: path.join(home, "AppData", "Roaming"),
+      LOCALAPPDATA: path.join(home, "AppData", "Local"),
+      HOMEDRIVE: path.parse(home).root,
+      HOMEPATH: home.slice(path.parse(home).root.length),
+      OPENCLAW_STATE_DIR: stateDir,
+      OPENCLAW_CONFIG_DIR: stateDir,
+      OPENCLAW_CONFIG_PATH: configPath,
       NO_COLOR: "1",
       NODE_ENV: "production",
     };
