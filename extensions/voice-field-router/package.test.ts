@@ -113,7 +113,7 @@ describe("voice-field-router installed runtime package", () => {
         diagnostics?: unknown[];
       };
       expect(inspection.plugin?.status).toBe("loaded");
-      expect(inspection.plugin?.source).toContain("dist/index.mjs");
+      expect((inspection.plugin?.source ?? "").replaceAll("\\", "/")).toContain("dist/index.mjs");
       expect(inspection.plugin?.source).not.toContain("index.ts");
       expect(inspection.plugin?.hookCount).toBe(1);
       expect(inspection.diagnostics).toEqual([]);
