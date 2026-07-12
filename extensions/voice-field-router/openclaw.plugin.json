@@ -1,0 +1,67 @@
+{
+  "id": "voice-field-router",
+  "name": "Voice Field Router",
+  "description": "Routes dedicated Telegram bot messages directly to Voice Field before agent dispatch.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "channel": {
+        "type": "string",
+        "enum": [
+          "telegram"
+        ]
+      },
+      "accountId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "senderId": {
+        "type": "string",
+        "pattern": "^[0-9]+$",
+        "minLength": 1
+      },
+      "voiceFieldUserId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 19000
+      },
+      "botUsername": {
+        "type": "string",
+        "const": "@DoubleRookVoiceFieldBot"
+      }
+    },
+    "allOf": [
+      {
+        "if": {
+          "required": [
+            "enabled"
+          ],
+          "properties": {
+            "enabled": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "accountId",
+            "senderId",
+            "botUsername",
+            "voiceFieldUserId"
+          ]
+        }
+      }
+    ]
+  }
+}

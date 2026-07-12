@@ -1,0 +1,32 @@
+{
+  "name": "@doublerook/openclaw-voice-field-router",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deterministic OpenClaw inbound router for Double Rook Voice Field",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.5.28"
+    },
+    "runtimeExtensions": [
+      "./dist/index.mjs"
+    ],
+    "build": {
+      "openclawVersion": "2026.5.28"
+    }
+  },
+  "scripts": {
+    "build": "tsdown --config tsdown.config.ts"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.28"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  }
+}
