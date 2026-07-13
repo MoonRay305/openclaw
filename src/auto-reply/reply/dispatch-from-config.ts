@@ -2073,6 +2073,12 @@ export async function dispatchReplyFromConfig(
               channel: hookContext.channelId,
               sessionKey: sessionStoreEntry.sessionKey ?? sessionKey,
               senderId: hookContext.senderId,
+              mediaPaths:
+                hookContext.mediaPaths ??
+                (hookContext.mediaPath ? [hookContext.mediaPath] : undefined),
+              mediaTypes:
+                hookContext.mediaTypes ??
+                (hookContext.mediaType ? [hookContext.mediaType] : undefined),
               isGroup: hookContext.isGroup,
               timestamp: hookContext.timestamp,
             },
