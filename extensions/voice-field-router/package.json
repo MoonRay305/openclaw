@@ -21,6 +21,9 @@
   "scripts": {
     "build": "tsdown --config tsdown.config.ts"
   },
+  "devDependencies": {
+    "tsdown": "0.22.1"
+  },
   "peerDependencies": {
     "openclaw": ">=2026.5.28"
   },
