@@ -5,6 +5,7 @@ export default defineConfig({
   outDir: "dist",
   platform: "node",
   format: "esm",
+  dts: false,
   deps: {
     neverBundle: (id) => id === "openclaw" || id.startsWith("openclaw/"),
   },

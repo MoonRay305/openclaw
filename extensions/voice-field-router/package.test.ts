@@ -53,13 +53,14 @@ describe("voice-field-router installed runtime package", () => {
       OPENCLAW_STATE_DIR: stateDir,
       OPENCLAW_CONFIG_DIR: stateDir,
       OPENCLAW_CONFIG_PATH: configPath,
+      OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
       NO_COLOR: "1",
       NODE_ENV: "production",
     };
     delete env.VITEST;
     delete env.VITEST_POOL_ID;
     delete env.VITEST_WORKER_ID;
-    const cli = path.join(repoRoot, "node_modules", "openclaw", "openclaw.mjs");
+    const cli = path.join(repoRoot, "openclaw.mjs");
     try {
       execFileSync(process.execPath, [cli, "plugins", "install", pluginDir], {
         cwd: repoRoot,
@@ -68,7 +69,6 @@ describe("voice-field-router installed runtime package", () => {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
       });
-      const configPath = path.join(home, ".openclaw", "openclaw.json");
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as {
         plugins: {
           entries: Record<string, { enabled?: boolean; config?: Record<string, unknown> }>;
