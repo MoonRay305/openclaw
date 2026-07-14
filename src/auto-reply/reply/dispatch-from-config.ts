@@ -2455,6 +2455,12 @@ export async function dispatchReplyFromConfig(
               replyToBody: hookContext.replyToBody,
               replyToSender: hookContext.replyToSender,
               replyToIsQuote: hookContext.replyToIsQuote,
+              mediaPaths:
+                hookContext.mediaPaths ??
+                (hookContext.mediaPath ? [hookContext.mediaPath] : undefined),
+              mediaTypes:
+                hookContext.mediaTypes ??
+                (hookContext.mediaType ? [hookContext.mediaType] : undefined),
               isGroup: hookContext.isGroup,
               timestamp: hookContext.timestamp,
             },

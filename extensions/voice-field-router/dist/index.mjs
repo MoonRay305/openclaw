@@ -1,3 +1,6 @@
+import path from "node:path";
+import { detectMime } from "openclaw/plugin-sdk/media-mime";
+import { readMediaBuffer } from "openclaw/plugin-sdk/media-store";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
 //#region index.ts
@@ -8,6 +11,9 @@ const VOICE_FIELD_SSRF_POLICY = {
 	allowedOrigins: ["https://voice-field.2rook.ai"]
 };
 const DEFAULT_FAILURE_REPLY = "Voice Field is temporarily unavailable. Your memo was not filed; please retry.";
+const MAX_PHOTOS = 10;
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_PHOTO_BYTES = 50 * 1024 * 1024;
 const MISSING_ACCOUNT_REPLY = "Voice Field routing is unavailable because the Telegram account identity is missing. Your memo was not filed.";
 const MISSING_SENDER_REPLY = "Voice Field routing is unavailable because the Telegram sender identity is missing. Your memo was not filed.";
 function normalizeConfig(value) {
@@ -30,19 +36,57 @@ function pickText(event) {
 		event.content
 	].find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
 }
+async function buildWebhookBody(params) {
+	const photos = (params.mediaPaths ?? []).flatMap((value, index) => {
+		if (typeof value !== "string" || !value.trim()) return [];
+		const claimedMime = typeof params.mediaTypes?.[index] === "string" ? params.mediaTypes[index]?.trim().toLowerCase() : void 0;
+		if (claimedMime && !claimedMime.startsWith("image/")) return [];
+		return [{
+			candidate: value.trim(),
+			claimedMime
+		}];
+	});
+	if (photos.length === 0) return {
+		body: JSON.stringify({
+			userId: params.userId,
+			text: params.text
+		}),
+		contentType: "application/json"
+	};
+	if (photos.length > MAX_PHOTOS) throw new Error("Voice Field photo limit exceeded");
+	const form = new FormData();
+	form.append("userId", params.userId);
+	form.append("text", params.text);
+	let totalBytes = 0;
+	for (const { candidate, claimedMime } of photos) {
+		const id = path.basename(candidate).trim();
+		if (!id || id === "." || id === "..") throw new Error("Voice Field media attachment rejected");
+		const media = await readMediaBuffer(id, "inbound", MAX_PHOTO_BYTES);
+		if (path.resolve(media.path) !== path.resolve(candidate)) throw new Error("Voice Field media attachment rejected");
+		totalBytes += media.size;
+		if (totalBytes > MAX_TOTAL_PHOTO_BYTES) throw new Error("Voice Field total photo limit exceeded");
+		const mime = await detectMime({
+			buffer: media.buffer,
+			headerMime: claimedMime,
+			filePath: id
+		});
+		if (!mime?.startsWith("image/")) throw new Error("Voice Field media attachment is not an image");
+		form.append("photos", new Blob([new Uint8Array(media.buffer)], { type: mime }), id);
+	}
+	return { body: form };
+}
 async function routeWithGuardedFetch(params) {
-	const headers = { "content-type": "application/json" };
+	const headers = {};
 	const token = process.env.VOICE_FIELD_WEBHOOK_TOKEN?.trim();
 	if (token) headers.authorization = `Bearer ${token}`;
+	const request = await buildWebhookBody(params);
+	if (request.contentType) headers["content-type"] = request.contentType;
 	const guarded = await fetchWithSsrFGuard({
 		url: DEFAULT_ENDPOINT,
 		init: {
 			method: "POST",
 			headers,
-			body: JSON.stringify({
-				userId: params.userId,
-				text: params.text
-			}),
+			body: request.body,
 			signal: AbortSignal.timeout(params.timeoutMs)
 		},
 		policy: VOICE_FIELD_SSRF_POLICY,
@@ -110,7 +154,9 @@ var voice_field_router_default = definePluginEntry({
 					text: await routeWithGuardedFetch({
 						text,
 						userId: config.voiceFieldUserId,
-						timeoutMs: config.timeoutMs
+						timeoutMs: config.timeoutMs,
+						mediaPaths: event.mediaPaths,
+						mediaTypes: event.mediaTypes
 					})
 				};
 			} catch (error) {

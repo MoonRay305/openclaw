@@ -1681,10 +1681,13 @@ importers:
         version: link:../..
 
   extensions/voice-field-router:
-    dependencies:
+    devDependencies:
       openclaw:
-        specifier: '>=2026.5.28'
-        version: 2026.5.28
+        specifier: workspace:*
+        version: link:../..
+      tsdown:
+        specifier: 0.22.1
+        version: 0.22.1(@typescript/native-preview@7.0.0-dev.20260527.2)(tsx@4.22.4)(typescript@6.0.3)(unrun@0.3.0)
 
   extensions/volcengine:
     devDependencies:
@@ -13924,6 +13927,33 @@ snapshots:
       unconfig-core: 7.5.0
     optionalDependencies:
       tsx: 4.22.3
+      typescript: 6.0.3
+      unrun: 0.3.0
+    transitivePeerDependencies:
+      - '@ts-macro/tsc'
+      - '@typescript/native-preview'
+      - oxc-resolver
+      - vue-tsc
+
+  tsdown@0.22.1(@typescript/native-preview@7.0.0-dev.20260527.2)(tsx@4.22.4)(typescript@6.0.3)(unrun@0.3.0):
+    dependencies:
+      ansis: 4.3.1
+      cac: 7.0.0
+      defu: 6.1.5
+      empathic: 2.0.1
+      hookable: 6.1.1
+      import-without-cache: 0.4.0
+      obug: 2.1.2
+      picomatch: 4.0.4
+      rolldown: 1.1.0
+      rolldown-plugin-dts: 0.25.2(@typescript/native-preview@7.0.0-dev.20260527.2)(rolldown@1.1.0)(typescript@6.0.3)
+      semver: 7.8.2
+      tinyexec: 1.2.4
+      tinyglobby: 0.2.17
+      tree-kill: 1.2.2
+      unconfig-core: 7.5.0
+    optionalDependencies:
+      tsx: 4.22.4
       typescript: 6.0.3
       unrun: 0.3.0
     transitivePeerDependencies:
