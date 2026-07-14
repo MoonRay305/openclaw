@@ -1680,6 +1680,15 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/voice-field-router:
+    devDependencies:
+      openclaw:
+        specifier: workspace:*
+        version: link:../..
+      tsdown:
+        specifier: 0.22.1
+        version: 0.22.1(@typescript/native-preview@7.0.0-dev.20260527.2)(tsx@4.22.4)(typescript@6.0.3)(unrun@0.3.0)
+
   extensions/volcengine:
     devDependencies:
       '@openclaw/plugin-sdk':
@@ -4526,36 +4535,42 @@ packages:
     resolution: {integrity: sha512-9/tnj1fXeXIONgr+5FGwr3bkqd4jaORdr3X9/k++rzHW+UIzvgIeXrJKv43403gtuKp0BoxdzsFxe2qsAQhhkw==}
     cpu: [arm64]
     os: [darwin]
+    deprecated: This package has been replaced by @agentclientprotocol/codex-acp. Please migrate to continue receiving updates.
     hasBin: true
 
   '@zed-industries/codex-acp-darwin-x64@0.15.0':
     resolution: {integrity: sha512-2cmflnVYM5yzvNu4ldff6OsfLzQThFToPszCT3t7jytWuG28V+W1cUEGsvFJGNkGC1Wo29Z4w5LZ3wyfOkvPxg==}
     cpu: [x64]
     os: [darwin]
+    deprecated: This package has been replaced by @agentclientprotocol/codex-acp. Please migrate to continue receiving updates.
     hasBin: true
 
   '@zed-industries/codex-acp-linux-arm64@0.15.0':
     resolution: {integrity: sha512-ioCXCiZMd4v7Eqyed9Iz4xcPKsZbSH157wOitsWQKxUiX43c1Ti5fykZcrh9cNSLOgiGmI3V2nbYp0aTf66grQ==}
     cpu: [arm64]
     os: [linux]
+    deprecated: This package has been replaced by @agentclientprotocol/codex-acp. Please migrate to continue receiving updates.
     hasBin: true
 
   '@zed-industries/codex-acp-linux-x64@0.15.0':
     resolution: {integrity: sha512-WtqI8KGX9z7XvdkazumYraoDwpip5lFBRtFXoIwYCSBoDZdOqQsfNQndIfTDttfQ1BdZYKczDnrfbRaiIFU9UA==}
     cpu: [x64]
     os: [linux]
+    deprecated: This package has been replaced by @agentclientprotocol/codex-acp. Please migrate to continue receiving updates.
     hasBin: true
 
   '@zed-industries/codex-acp-win32-arm64@0.15.0':
     resolution: {integrity: sha512-L+OFIPOzAuxsImlq8E227MZxgujMLMEJSqiR9QjZq8fiIFCKh/HnxmvyXvjWaHbJdb1pZ09WKe3MNwV9ln/+GQ==}
     cpu: [arm64]
     os: [win32]
+    deprecated: This package has been replaced by @agentclientprotocol/codex-acp. Please migrate to continue receiving updates.
     hasBin: true
 
   '@zed-industries/codex-acp-win32-x64@0.15.0':
     resolution: {integrity: sha512-LDnADpCg1Rzbkyxs4hMaOvRwNa68KLp8CoNVom8ZE/sChSvcDrj/RCoMsZWrARJGWs7EQ9zYeLoeVk5VcVQoPQ==}
     cpu: [x64]
     os: [win32]
+    deprecated: This package has been replaced by @agentclientprotocol/codex-acp. Please migrate to continue receiving updates.
     hasBin: true
 
   '@zed-industries/codex-acp@0.15.0':
@@ -13912,6 +13927,33 @@ snapshots:
       unconfig-core: 7.5.0
     optionalDependencies:
       tsx: 4.22.3
+      typescript: 6.0.3
+      unrun: 0.3.0
+    transitivePeerDependencies:
+      - '@ts-macro/tsc'
+      - '@typescript/native-preview'
+      - oxc-resolver
+      - vue-tsc
+
+  tsdown@0.22.1(@typescript/native-preview@7.0.0-dev.20260527.2)(tsx@4.22.4)(typescript@6.0.3)(unrun@0.3.0):
+    dependencies:
+      ansis: 4.3.1
+      cac: 7.0.0
+      defu: 6.1.5
+      empathic: 2.0.1
+      hookable: 6.1.1
+      import-without-cache: 0.4.0
+      obug: 2.1.2
+      picomatch: 4.0.4
+      rolldown: 1.1.0
+      rolldown-plugin-dts: 0.25.2(@typescript/native-preview@7.0.0-dev.20260527.2)(rolldown@1.1.0)(typescript@6.0.3)
+      semver: 7.8.2
+      tinyexec: 1.2.4
+      tinyglobby: 0.2.17
+      tree-kill: 1.2.2
+      unconfig-core: 7.5.0
+    optionalDependencies:
+      tsx: 4.22.4
       typescript: 6.0.3
       unrun: 0.3.0
     transitivePeerDependencies:

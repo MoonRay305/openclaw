@@ -144,6 +144,7 @@
     "!dist/extensions/venice/**",
     "!dist/extensions/vercel-ai-gateway/**",
     "!dist/extensions/voice-call/**",
+    "!dist/extensions/voice-field-router/**",
     "!dist/extensions/whatsapp/**",
     "!dist/extensions/zai/**",
     "!dist/extensions/zalo/**",

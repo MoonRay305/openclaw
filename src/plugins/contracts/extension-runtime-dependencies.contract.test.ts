@@ -115,6 +115,7 @@ function shouldSkipRuntimeFile(filePath: string): boolean {
     normalized.includes("/dist/") ||
     normalized.includes("/coverage/") ||
     normalized.includes("/assets/") ||
+    normalized.endsWith("/tsdown.config.ts") ||
     normalized.endsWith("/web/vite.config.ts")
   ) {
     return true;

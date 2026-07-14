@@ -451,6 +451,10 @@ export type PluginHookBeforeDispatchEvent = {
   replyToBody?: string;
   replyToSender?: string;
   replyToIsQuote?: boolean;
+  /** Locally staged current-turn media paths; plugins must treat them as untrusted. */
+  mediaPaths?: string[];
+  /** MIME types aligned by index with mediaPaths when supplied by the channel. */
+  mediaTypes?: string[];
   isGroup?: boolean;
   timestamp?: number;
 };

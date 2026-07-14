@@ -131,8 +131,14 @@ observation-only.
 - **`message_sending`** — rewrite outbound content or cancel delivery
 - **`reply_payload_sending`** — mutate or cancel normalized reply payloads before delivery
 - `message_sent` — observe outbound delivery success or failure
-- **`before_dispatch`** - inspect or rewrite an outbound dispatch before channel handoff
+- **`before_dispatch`** - inspect or handle a canonical inbound message before model dispatch
 - **`reply_dispatch`** - participate in the final reply-dispatch pipeline
+
+`before_dispatch` receives canonical inbound text, channel, session, sender, and timestamp fields.
+When the current turn has locally staged media, `event.mediaPaths` contains those paths and
+`event.mediaTypes` contains index-aligned MIME hints. Treat paths as untrusted and read them
+through the managed media-store SDK. Returning `{ handled: true, text? }` short-circuits model
+dispatch; omit `text` to handle the message silently.
 
 **Sessions and compaction**
 
