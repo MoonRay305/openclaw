@@ -6668,6 +6668,35 @@ describe("before_dispatch hook", () => {
     );
   });
 
+  it("forwards current-turn media metadata to before_dispatch hooks", async () => {
+    hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true });
+    const dispatcher = createDispatcher();
+    await dispatchReplyFromConfig({
+      ctx: createHookCtx({
+        MediaPath: "/root/.openclaw/media/inbound/photo-a.jpg",
+        MediaType: "image/jpeg",
+        MediaPaths: [
+          "/root/.openclaw/media/inbound/photo-a.jpg",
+          "/root/.openclaw/media/inbound/photo-b.png",
+        ],
+        MediaTypes: ["image/jpeg", "image/png"],
+      }),
+      cfg: emptyConfig,
+      dispatcher,
+    });
+
+    expect(hookMocks.runner.runBeforeDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mediaPaths: [
+          "/root/.openclaw/media/inbound/photo-a.jpg",
+          "/root/.openclaw/media/inbound/photo-b.png",
+        ],
+        mediaTypes: ["image/jpeg", "image/png"],
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("skips model dispatch when hook returns handled", async () => {
     hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true, text: "Blocked" });
     const dispatcher = createDispatcher();
